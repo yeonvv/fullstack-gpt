@@ -1,6 +1,3 @@
-from typing import Dict, List
-from uuid import UUID
-from langchain.schema.output import ChatGenerationChunk, GenerationChunk
 import streamlit as st
 
 from langchain.chat_models import ChatOpenAI
@@ -132,7 +129,7 @@ if file:
             | llm
         )
         with st.chat_message("ai"):
-            response = chain.invoke(question)
+            chain.invoke(question)
 
 
 else:

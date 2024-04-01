@@ -1,0 +1,30 @@
+1. file이 업로드 되지 않은 경우 markdown과 session_state의 "messages"를 초기화 한다.
+2. file이 업로드 된 경우 file을 embed_file을 통해 retriever객체를 반환한다.
+    2-1. embed_file은 파일의 내용과 경로를 설정하여 open() 클래스를 통해 열거나 작성(원본 복사)한다.
+    2-2. 파일을 읽어오고 지정한 형식에 맞게 파일의 텍스트를 자른다
+    2-3. 자른 파일을 지정된 위치에 embedding한다
+    2-4. embeded된 파일을 불러와 retriever객체로 반환한다.
+3. file이 업로드 됨과 동시에 ai 메시지를 화면에 띄운다
+    send_message함수가 하는 역할은 받은 문자열과 role을 통해 chat_message객체를 반환한다
+    'save' kwarg는 기본값이 True로 True라면 save_message함수를 통해 session_state의 "message"에 받은 문자열과 role을 할당한다.
+    이때, 첫번째로 띄우는 이 ai 메시지는 항상 떠 있을 것이므로, save는 False이다.
+4. paint_msg함수를 통해 session_state의 "messages"에 저장된 모든 객체를 send_message 함수를 통해 그린다.
+5. file이 업로드 됨과 동시에 chat_input을 통해 text를 입력할 input을 그린다.
+6. input으로 전송한 값은 send_message를 통해 "human" 값으로 chat_message 객체가 반환된다.
+    6-1. 전송한 값은 만들어둔 chain에 invoke된다.
+    6-2. chain의 retriever객체에 값이 들어가서 값과 관련된 documents들을 반환한 retriever객체(문서들)가 반환되고 이는 format_docs에 전송되어 하나의 문자열로 반환된다.
+    6-3. question에는 당연히 전송한 값이 들어간다.
+    6-4. 이어진 문자열과 전송값이 prompt의 키값에 할당되어 전송되고 이는 llm에 전해진다음 계산된 값이 chain에 할당된다.
+    6-5. 반환된 값은 role이 "ai"인 chat_message 객체가 된다.
+7. chain을 통해 반환된 chat_message객체는 streaming과 callback를 통해 실시간처럼 그려진다.
+    7-1. 그려진 값은 동시에 session_state의 "messages" 에 저장되어 그려지며 paint_msg를 통해 data가 변해도 유지된다.
+
+paint_msg가 save=False를 하는 이유: 이미 전송된 값들은 session_state의 "messages"에 저장되었기 때문에 이중 저장을 막기 위해 False를 한다.
+    만약 True인 경우 계속해서 저장되고, 계속 해서 그려져 메모리 누수가 발생한다.
+
+callbacks class를 사용하면 내부의 모든 method들이 호출된다
+
+callbacks의 on_llm_new_token 에 self.messages += token을 하는 이유:
+    token은 한번에 생성되는것이 아니라 하나씩 생성되기에 빈 문자열인 message에 생성되는 token을 하나씩 넣어주는 작업이다.
+
+callbacks의 message_box는 단순히 message를 채워넣어 화면에 그리는 것이고, llm_end가 되면 message는 save_message에 저장된다
