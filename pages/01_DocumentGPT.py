@@ -1,3 +1,6 @@
+from typing import Dict, List
+from uuid import UUID
+from langchain.schema.output import ChatGenerationChunk, GenerationChunk
 import streamlit as st
 
 from langchain.chat_models import ChatOpenAI
@@ -8,6 +11,7 @@ from langchain.text_splitter import CharacterTextSplitter
 from langchain.vectorstores import FAISS
 from langchain.prompts import ChatPromptTemplate
 from langchain.schema.runnable import RunnableLambda, RunnablePassthrough
+from langchain.callbacks.base import BaseCallbackHandler
 
 st.set_page_config(
     page_title="DocumentGPT",
@@ -50,7 +54,27 @@ def embed_file(file):
     return retriever
 
 
-llm = ChatOpenAI(temperature=0.1)
+class ChatCallbackHandler(BaseCallbackHandler):
+
+    def __init__(self):
+        self.message = ""
+
+    def on_llm_start(self, *args, **kwargs):
+        self.message_box = st.empty()
+
+    def on_llm_end(self, *args, **kwargs):
+        save_message(msg=self.message, role="ai")
+
+    def on_llm_new_token(self, token, *args, **kwargs):
+        self.message += token
+        self.message_box.markdown(self.message)
+
+
+llm = ChatOpenAI(
+    temperature=0.1,
+    streaming=True,
+    callbacks=[ChatCallbackHandler()],
+)
 
 prompt = ChatPromptTemplate.from_messages(
     [
@@ -70,11 +94,17 @@ prompt = ChatPromptTemplate.from_messages(
 )
 
 
+# save_message 함수를 만든이유: paint_msg에서 st.session_state["messages"]를 읽어오기 때문에 ai의 답변을 저장해 놓으면 send_message를 통해
+# chat_message로 답변을 그려준다
+def save_message(msg, role):
+    st.session_state["messages"].append({"msg": msg, "role": role})
+
+
 def send_message(msg, role, save=True):
     with st.chat_message(role):
         st.markdown(msg)
     if save:
-        st.session_state["messages"].append({"msg": msg, "role": role})
+        save_message(msg, role)
 
 
 def paint_msg():
@@ -101,8 +131,8 @@ if file:
             | prompt
             | llm
         )
-        response = chain.invoke(question)
-        send_message(msg=response.content, role="ai")
+        with st.chat_message("ai"):
+            response = chain.invoke(question)
 
 
 else:
