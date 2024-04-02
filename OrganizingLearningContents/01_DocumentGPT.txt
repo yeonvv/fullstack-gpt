@@ -28,3 +28,6 @@ callbacks의 on_llm_new_token 에 self.messages += token을 하는 이유:
     token은 한번에 생성되는것이 아니라 하나씩 생성되기에 빈 문자열인 message에 생성되는 token을 하나씩 넣어주는 작업이다.
 
 callbacks의 message_box는 단순히 message를 채워넣어 화면에 그리는 것이고, llm_end가 되면 message는 save_message에 저장된다
+
+memory를 연결하는 과정에서 @st.cache_resource 데코레이터를 init_llm 위에 설정했었다.
+    그렇게 하니 ConversationSummaryBufferMemory가 사용하는 llm이 현재 llm과 동일하게되어 메모리에서 요약된것이 llm에 전달되어 같이 그려졌던 것이다.
