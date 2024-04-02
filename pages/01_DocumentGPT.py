@@ -9,6 +9,7 @@ from langchain.vectorstores import FAISS
 from langchain.prompts import ChatPromptTemplate
 from langchain.schema.runnable import RunnableLambda, RunnablePassthrough
 from langchain.callbacks.base import BaseCallbackHandler
+from langchain.memory import ConversationSummaryBufferMemory
 
 st.set_page_config(
     page_title="DocumentGPT",
@@ -51,27 +52,56 @@ def embed_file(file):
     return retriever
 
 
-class ChatCallbackHandler(BaseCallbackHandler):
+def init_llm(chat_callback: bool):
+    if chat_callback:
 
-    def __init__(self):
-        self.message = ""
+        class ChatCallbackHandler(BaseCallbackHandler):
 
-    def on_llm_start(self, *args, **kwargs):
-        self.message_box = st.empty()
+            def __init__(self):
+                self.message = ""
 
-    def on_llm_end(self, *args, **kwargs):
-        save_message(msg=self.message, role="ai")
+            def on_llm_start(self, *args, **kwargs):
+                self.message_box = st.empty()
 
-    def on_llm_new_token(self, token, *args, **kwargs):
-        self.message += token
-        self.message_box.markdown(self.message)
+            def on_llm_end(self, *args, **kwargs):
+                save_message(msg=self.message, role="ai")
+
+            def on_llm_new_token(self, token, *args, **kwargs):
+                self.message += token
+                self.message_box.markdown(self.message)
+
+        llm = ChatOpenAI(
+            temperature=0.1,
+            streaming=True,
+            callbacks=[ChatCallbackHandler()],
+        )
+    else:
+        llm = ChatOpenAI(
+            callbacks=[],
+        )
+    return llm
 
 
-llm = ChatOpenAI(
-    temperature=0.1,
-    streaming=True,
-    callbacks=[ChatCallbackHandler()],
-)
+llm_for_chat = init_llm(chat_callback=True)
+llm_for_memory = init_llm(chat_callback=False)
+
+
+@st.cache_resource
+def init_memory(_llm):
+    return ConversationSummaryBufferMemory(
+        llm=_llm,
+        max_token_limit=1000,
+        return_messages=True,
+    )
+
+
+memory = init_memory(llm_for_memory)
+
+# 메모리가 사용하는 llm이 같은지 확인
+# if memory.llm == llm_for_chat:
+#     st.write("Yes")
+# else:
+#     st.write("No")
 
 prompt = ChatPromptTemplate.from_messages(
     [
@@ -113,6 +143,10 @@ def format_docs(docs):
     return "\n\n".join(document.page_content for document in docs)
 
 
+def load_history(_):
+    return memory.load_memory_variables({})["history"]
+
+
 if file:
     retriever = embed_file(file)
     send_message(msg="I'm ready! Ask away!", role="ai", save=False)
@@ -120,16 +154,22 @@ if file:
     question = st.chat_input(placeholder="Ask your question in document")
     if question:
         send_message(msg=question, role="human")
+
         chain = (
             {
                 "context": retriever | RunnableLambda(format_docs),
                 "question": RunnablePassthrough(),
             }
             | prompt
-            | llm
+            | llm_for_chat
         )
+
         with st.chat_message("ai"):
-            chain.invoke(question)
+            response = chain.invoke(question).content
+            memory.save_context(
+                inputs={"input": question},
+                outputs={"output": response},
+            )
 
 
 else:
@@ -143,3 +183,4 @@ else:
 """
     )
     st.session_state["messages"] = []
+    memory.clear()
